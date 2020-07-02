@@ -1,0 +1,49 @@
+load("@npm_bazel_typescript//:index.bzl", "ts_library")
+
+ts_library(
+    name = "compiler",
+    srcs = ["compiler.ts"],
+    tsconfig = "@brex_rules_js//:tsconfig.json",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":config",
+        "//packages/babel-tsc:config",
+        "//packages/babel-tsc:host",
+        "//packages/babel-tsc:utils",
+        "@npm//@babel/core",
+        "@npm//@types",
+    ],
+)
+
+ts_library(
+    name = "config",
+    srcs = ["config.ts"],
+    tsconfig = "@brex_rules_js//:tsconfig.json",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//packages/babel-tsc:config",
+        "@npm//@babel/core",
+        "@npm//@babel/plugin-proposal-class-properties",
+        "@npm//@babel/plugin-proposal-decorators",
+        "@npm//@babel/plugin-proposal-nullish-coalescing-operator",
+        "@npm//@babel/plugin-proposal-object-rest-spread",
+        "@npm//@babel/plugin-proposal-optional-chaining",
+        "@npm//@babel/plugin-transform-typescript",
+        "@npm//@babel/preset-env",
+        "@npm//@babel/preset-typescript",
+        "@npm//@types",
+        "@npm//babel-plugin-transform-typescript-metadata",
+    ],
+)
+
+ts_library(
+    name = "index",
+    srcs = ["index.ts"],
+    tsconfig = "@brex_rules_js//:tsconfig.json",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":compiler",
+        ":config",
+        "@npm//@types",
+    ],
+)

@@ -1,0 +1,71 @@
+load("@npm_bazel_typescript//:index.bzl", "ts_library")
+
+ts_library(
+    name = "compiler",
+    srcs = ["compiler.ts"],
+    tsconfig = "@brex_rules_js//:tsconfig.json",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":host",
+        ":types",
+        "//packages/babel-tsc:cache",
+        "//packages/babel-tsc:config",
+        "//packages/babel-tsc:host",
+        "@npm//@types",
+        "@npm//typescript",
+    ],
+)
+
+ts_library(
+    name = "config",
+    srcs = ["config.ts"],
+    tsconfig = "@brex_rules_js//:tsconfig.json",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":types",
+        "//packages/babel-tsc:cache",
+        "//packages/babel-tsc:config",
+        "//packages/babel-tsc:host",
+        "@npm//@types",
+        "@npm//typescript",
+    ],
+)
+
+ts_library(
+    name = "host",
+    srcs = ["host.ts"],
+    tsconfig = "@brex_rules_js//:tsconfig.json",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":types",
+        "//packages/babel-tsc:cache",
+        "//packages/babel-tsc:config",
+        "//packages/babel-tsc:host",
+        "@npm//@types",
+        "@npm//typescript",
+    ],
+)
+
+ts_library(
+    name = "index",
+    srcs = ["index.ts"],
+    tsconfig = "@brex_rules_js//:tsconfig.json",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":compiler",
+        ":config",
+        ":types",
+        "@npm//@types",
+    ],
+)
+
+ts_library(
+    name = "types",
+    srcs = ["types.ts"],
+    tsconfig = "@brex_rules_js//:tsconfig.json",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@npm//@types",
+        "@npm//typescript",
+    ],
+)
