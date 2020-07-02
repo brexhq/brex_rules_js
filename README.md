@@ -34,3 +34,7 @@ The code in this repo is influenced and/or has code snippets from:
 * `bazelbuild/rules_go`
 * `bazelbuild/gazelle`
 * `jasongwartz/bazel_rules_nodejs_contrib`
+
+# License
+
+Apache License 2.0.
