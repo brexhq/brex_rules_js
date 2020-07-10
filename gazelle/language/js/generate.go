@@ -1,18 +1,26 @@
 package js
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"path"
-	"path/filepath"
 	"strings"
 
 	"github.com/bazelbuild/bazel-gazelle/config"
 	"github.com/bazelbuild/bazel-gazelle/language"
 	"github.com/bazelbuild/bazel-gazelle/language/proto"
 	"github.com/bazelbuild/bazel-gazelle/rule"
+	"golang.org/x/sync/errgroup"
 )
 
 const IsTestFileAttr = "is_test_file"
+
+type partialGenerateResult struct {
+	rules     []*rule.Rule
+	empty     []*rule.Rule
+	usedFiles []string
+}
 
 func (s *JSLanguage) GenerateRules(args language.GenerateArgs) language.GenerateResult {
 	var rules []*rule.Rule
@@ -22,6 +30,15 @@ func (s *JSLanguage) GenerateRules(args language.GenerateArgs) language.Generate
 	c := args.Config
 	cfg := GetConfig(c)
 	protoMode := GetProtoMode(c)
+	packageName := buildPackageName(cfg, args.Rel, nil)
+
+	g := &generator{
+		cfg:         cfg,
+		rel:         args.Rel,
+		dir:         args.Dir,
+		protoMode:   protoMode,
+		packageName: packageName,
+	}
 
 	for _, other := range args.OtherGen {
 		if other.Kind() != "proto_library" {
@@ -29,104 +46,57 @@ func (s *JSLanguage) GenerateRules(args language.GenerateArgs) language.Generate
 		}
 
 		pkg := other.PrivateAttr(proto.PackageKey).(proto.Package)
-		rules = append(rules, generateProto(protoMode, other.Name(), pkg)...)
+		rules = append(rules, g.generateProto(other.Name(), pkg)...)
 	}
 
-	for _, f := range append(args.RegularFiles, args.GenFiles...) {
-		if strings.HasPrefix(f, ".") || HasAnySuffix(f, IgnoredExtensions...) {
-			continue
-		}
+	ctx := context.Background()
+	eg, _ := errgroup.WithContext(ctx)
 
-		base := strings.ToLower(path.Base(f))
-		base = strings.TrimSuffix(base, filepath.Ext(base))
+	allFiles := append(args.RegularFiles, args.GenFiles...)
+	results := make([]partialGenerateResult, len(allFiles))
 
-		if !cfg.IsRelevantFile(f) {
-			continue
-		}
+	for i := range allFiles {
+		// We need a copy so we can go into the goroutine
+		idx := i
+		f := allFiles[i]
 
-		usedFiles = append(usedFiles, f)
+		// We go in parallel as extracting file info is quite heavy
+		eg.Go(func() error {
+			if strings.HasPrefix(f, ".") || HasAnySuffix(f, IgnoredExtensions...) {
+				return nil
+			}
 
-		test := cfg.IsTestFile(f)
-		info := GetFileinfo(args.Dir, f)
-		name := base
-		lint := false
-		kind := ""
+			if cfg.IsCode(f) {
+				info, err := s.inspect.InspectCode(path.Join(args.Dir, f))
 
-		if cfg.IsJavascript(f) {
-			kind = "js_library"
-			lint = true
-		} else if cfg.IsTypescript(f) {
-			kind = "ts_library"
-			lint = true
-		}
-
-		if cfg.Compiler == CompilerBabel {
-			kind = "babel_library"
-		}
-
-		if test {
-			name = base + "_" + "tests"
-
-			r := rule.NewRule("jest_node_test", base)
-			r.SetAttr("tests", []string{":" + name})
-			r.SetAttr("config", cfg.JestConfig)
-			r.SetAttr("npm_workspace", cfg.NpmWorkspaceName)
-			r.SetPrivateAttr(config.GazelleImportsKey, []string{})
-			rules = append(rules, r)
-		}
-
-		if lint && cfg.EslintEnabled {
-			r := rule.NewRule("eslint_test", base+".lint")
-			r.SetAttr("srcs", []string{f})
-			r.SetAttr("config", cfg.EslintConfig)
-			r.SetAttr("npm_workspace", cfg.NpmWorkspaceName)
-			r.SetAttr("npm_package", cfg.NpmPackage)
-			r.SetPrivateAttr(config.GazelleImportsKey, info.Imports)
-			rules = append(rules, r)
-		}
-
-		r := rule.NewRule(kind, name)
-
-		r.SetAttr("srcs", []string{f})
-
-		if test {
-			r.SetPrivateAttr(IsTestFileAttr, true)
-			r.SetAttr("testonly", true)
-		} else {
-			r.SetAttr("visibility", []string{"//visibility:public"})
-		}
-
-		if cfg.Compiler == CompilerTsLibrary {
-			if cfg.IsTypescript(f) {
-				if cfg.NpmWorkspaceName != "npm" {
-					r.SetAttr("compiler", fmt.Sprintf("@%s//@bazel/typescript/bin:tsc_wrapped", cfg.NpmWorkspaceName))
-					r.SetAttr("node_modules", fmt.Sprintf("@%s//typescript:typescript__typings", cfg.NpmWorkspaceName))
+				if err != nil {
+					return fmt.Errorf("error processing %s:%s: %s", args.Rel, f, err)
 				}
 
-				r.SetAttr("tsconfig", cfg.TsConfig)
-			}
-		} else {
-			if cfg.BabelConfig != "" {
-				r.SetAttr("babel_config", cfg.BabelConfig)
-			}
-
-			if cfg.Package != "" {
-				r.SetAttr("package_name", cfg.Package)
+				results[idx].rules = append(rules, g.generateLibrary(info)...)
+				results[idx].usedFiles = append(usedFiles, f)
+			} else if cfg.IsAsset(f) {
+				results[idx].rules = append(rules, g.generateAsset(f)...)
+				results[idx].usedFiles = append(usedFiles, f)
 			}
 
-			if cfg.IsTypescript(f) && cfg.TsConfig != "" {
-				r.SetAttr("ts_config", cfg.TsConfig)
-			}
-		}
-
-		r.SetPrivateAttr(config.GazelleImportsKey, info.Imports)
-
-		rules = append(rules, r)
+			return nil
+		})
 	}
 
-	if cfg.PackageMode == PackageModeUnified {
-		rules = unifyPackage(cfg, args, rules)
+	err := eg.Wait()
+
+	if err != nil {
+		log.Printf("%s", err)
 	}
+
+	for _, r := range results {
+		rules = append(rules, r.rules...)
+		empty = append(empty, r.empty...)
+		usedFiles = append(usedFiles, r.usedFiles...)
+	}
+
+	rules = g.unifyPackage(rules)
 
 	var res language.GenerateResult
 
@@ -148,6 +118,7 @@ func (s *JSLanguage) GenerateRules(args language.GenerateArgs) language.Generate
 		"babel_library":  true,
 		"jest_node_test": true,
 		"eslint_test":    true,
+		"webpack_asset":  true,
 	})...)
 
 	for _, r := range rules {
@@ -156,75 +127,6 @@ func (s *JSLanguage) GenerateRules(args language.GenerateArgs) language.Generate
 	}
 
 	return res
-}
-
-func generateProto(mode proto.Mode, name string, pkg proto.Package) []*rule.Rule {
-	if !mode.ShouldGenerateRules() {
-		return nil
-	}
-
-	if len(pkg.Files) == 0 {
-		return nil
-	}
-
-	ruleName := buildProtoLibraryName(name)
-	imports := make([]string, 0, len(pkg.Imports))
-
-	for i := range pkg.Imports {
-		imports = append(imports, i)
-	}
-
-	compilers := []string{"@brex_rules_js//proto:proto"}
-
-	if pkg.HasServices {
-		compilers = []string{"@brex_rules_js//proto:grpc"}
-	}
-
-	r := rule.NewRule("js_proto_library", ruleName)
-	r.SetAttr("proto", ":"+name)
-	r.SetAttr("visibility", []string{"//visibility:public"})
-	r.SetAttr("compilers", compilers)
-	r.SetPrivateAttr(config.GazelleImportsKey, imports)
-
-	return []*rule.Rule{r}
-}
-
-func unifyPackage(cfg *Config, args language.GenerateArgs, allRules []*rule.Rule) []*rule.Rule {
-	var rules []*rule.Rule
-
-	ruleMap := map[string]*rule.Rule{}
-
-	for _, r := range allRules {
-		isTest, _ := r.PrivateAttr(IsTestFileAttr).(bool)
-
-		if isTest || !MatchesAny(r.Kind(), "js_library", "ts_library", "babel_library") {
-			rules = append(rules, r)
-			continue
-		}
-
-		grule, ok := ruleMap[r.Kind()]
-		imps := r.PrivateAttr(config.GazelleImportsKey).([]string)
-
-		if !ok {
-			r.SetName("js_default_library")
-			ruleMap[r.Kind()] = r
-			continue
-		}
-
-		srcs := grule.AttrStrings("srcs")
-		srcs = append(srcs, r.AttrStrings("srcs")...)
-		grule.SetAttr("srcs", srcs)
-
-		gimp := grule.PrivateAttr(config.GazelleImportsKey).([]string)
-		gimp = append(gimp, imps...)
-		grule.SetPrivateAttr(config.GazelleImportsKey, gimp)
-	}
-
-	for _, v := range ruleMap {
-		rules = append(rules, v)
-	}
-
-	return rules
 }
 
 func (s *JSLanguage) Fix(c *config.Config, f *rule.File) {
@@ -262,6 +164,3 @@ outer:
 	return empty
 }
 
-func buildProtoLibraryName(name string) string {
-	return strings.TrimSuffix(name, "_proto") + "_js_proto"
-}

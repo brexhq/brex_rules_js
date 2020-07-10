@@ -121,7 +121,7 @@ def _js_proto_library_impl(ctx):
             ),
         ),
         declaration_info(
-            direct = ts_sources,
+            declarations = ts_sources,
             deps = deps,
         ),
         js_named_module_info(

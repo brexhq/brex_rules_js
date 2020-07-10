@@ -8,15 +8,10 @@ load(
     "js_ecma_script_module_info"
 )
 
-def collect_declarations(deps = [], node_modules = None):
+def collect_declarations(deps):
     declaration_infos = [dep[DeclarationInfo] for dep in deps if dep[DeclarationInfo]]
     direct_deps_declarations = [dep.declarations for dep in declaration_infos]
     transitive_deps_declarations = [dep.transitive_declarations for dep in declaration_infos]
-
-    if node_modules:
-        if DeclarationInfo in node_modules:
-            transitive_deps_declarations.append(node_modules[DeclarationInfo].transitive_declarations)
-
     type_blacklisted_declarations = [dep.type_blacklisted_declarations for dep in declaration_infos]
 
     return DeclarationInfo(
@@ -25,64 +20,36 @@ def collect_declarations(deps = [], node_modules = None):
         type_blacklisted_declarations = depset(transitive = type_blacklisted_declarations),
     )
 
-def declaration_info(direct = [], deps = [], node_modules = None, blacklisted = []):
-    deps = collect_declarations(deps = deps, node_modules = node_modules)
+def declaration_info(declarations = [], deps = [], blacklisted = []):
+    deps = collect_declarations(deps)
 
     return DeclarationInfo(
-        declarations = depset(direct = direct),
-        transitive_declarations = depset(direct = direct, transitive = [deps.transitive_declarations]),
+        declarations = depset(direct = declarations),
+        transitive_declarations = depset(direct = declarations, transitive = [deps.transitive_declarations]),
         type_blacklisted_declarations = depset(direct = blacklisted, transitive = [deps.type_blacklisted_declarations]),
     )
 
-def collect_runtime(deps = None, node_modules = None, filter = None):
-    node_modules_depsets = []
+def collect_runtime(deps, filter = None):
+    depsets = []
 
-    if node_modules:
-        node_modules_depsets.append(node_modules.files)
-
-        if NpmPackageInfo in node_modules:
-            node_modules_depsets.append(node_modules[NpmPackageInfo].sources)
-
-    # Also include files from npm fine grained deps as inputs.
-    # These deps are identified by the NpmPackageInfo provider.
     for d in deps:
         if NpmPackageInfo in d:
-            node_modules_depsets.append(d[NpmPackageInfo].sources)
-
-    node_modules = depset(transitive = node_modules_depsets)
-
-    # Using an array of depsets will allow us to avoid flattening files and sources
-    # inside this loop. This should reduce the performances hits,
-    # since we don't need to call .to_list()
-    # Also avoid deap transitive depset()s by creating single array of
-    # transitive depset()s
-    sources_depsets = []
-
-    for d in deps:
+            depsets.append(d[NpmPackageInfo].sources)
         if JSNamedModuleInfo in d:
-                sources_depsets.append(d[JSNamedModuleInfo].sources)
-        if hasattr(d, "files"):
-                sources_depsets.append(d.files)
+            depsets.append(d[JSNamedModuleInfo].sources)
+        if DefaultInfo in d:
+            depsets.append(d[DefaultInfo].files)
 
-    sources = depset(transitive = sources_depsets)
+    deps = depset(transitive = depsets)
 
     if filter:
-        sources = depset(direct = [
+        deps = depset(direct = [
             x
-            for x in sources.to_list()
+            for x in deps.to_list()
             if filter(x)
         ])
 
-        node_modules = depset(direct = [
-            x
-            for x in node_modules.to_list()
-            if filter(x)
-        ])
-
-    return struct(
-        sources = sources,
-        node_modules = node_modules,
-    )
+    return deps
 
 # This is the same as node_modules_aspect but allows multiple sources
 # other than the "deps" attribute.

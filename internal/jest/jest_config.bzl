@@ -1,9 +1,8 @@
-load("@brex_rules_js//internal/js_library:js_library.bzl", "js_library")
+load("@brex_rules_js//internal/utils:config.bzl", "config_rule", "default_config_rule_impl")
 
-def jest_config(name, config, deps = [], **kwargs):
-    js_library(
-        name = name,
-        srcs = [config],
-        deps = deps,
-        **kwargs,
-    )
+JestConfig = provider()
+
+def _jest_config_impl(ctx):
+    return default_config_rule_impl(ctx, JestConfig)
+
+jest_config = config_rule(_jest_config_impl, provides = [JestConfig])

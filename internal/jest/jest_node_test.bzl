@@ -1,92 +1,115 @@
-load("@npm_bazel_typescript//:index.bzl", "ts_library")
-load("@build_bazel_rules_nodejs//internal/node:node.bzl", "nodejs_test")
-load("@build_bazel_rules_nodejs//:providers.bzl", "JSNamedModuleInfo")
+load("@bazel_skylib//lib:shell.bzl", "shell")
+load("@build_bazel_rules_nodejs//:providers.bzl", "node_modules_aspect")
+load("@brex_rules_js//internal/utils:collect.bzl", "collect_runtime")
+load("@brex_rules_js//internal/utils:config.bzl", "get_config_entrypoint")
+load("@brex_rules_js//internal/utils:roots.bzl", "compute_node_modules_root", "get_module_mappings")
+load("@brex_rules_js//internal/jest:jest_config.bzl", "JestConfig")
 
-def _devmode_js_sources_impl(ctx):
-    direct = depset(
-        transitive = [
-            test[JSNamedModuleInfo].direct_sources
-            for test in ctx.attr.libraries
-        ]
+def _jest_test_impl(ctx):
+    build_deps = []
+    compiler_deps = []
+
+    build_deps.extend(ctx.attr.srcs)
+    build_deps.extend(ctx.attr.deps)
+
+    if ctx.attr.config:
+        cfg = ctx.attr.config[JestConfig]
+
+        compiler_deps.append(ctx.attr.config)
+        build_deps.extend(cfg.runtime_deps)
+
+    # Collect all deps
+    build_deps = collect_runtime(build_deps)
+    compiler_deps = collect_runtime(compiler_deps)
+    all_inputs = depset(transitive = [build_deps, compiler_deps])
+
+    # Compile manifest
+    manifest = ctx.actions.declare_file("%s.MF" % ctx.label.name)
+
+    ctx.actions.write(
+        output = manifest,
+        content = "\n".join([
+            f.short_path
+            for f in build_deps.to_list()
+        ])
     )
 
-    sources = depset(
-        transitive = [
-            test[JSNamedModuleInfo].sources
-            for test in ctx.attr.libraries
-        ]
+    # Build args
+    args = []
+
+    if ctx.attr.config:
+        args.extend(["--config", ctx.attr.config[JestConfig].config.short_path])
+
+    args.extend([
+        src.short_path
+        for src
+        in ctx.files.srcs
+    ])
+
+    # Create runner script
+    jest = ctx.attr._jest[DefaultInfo]
+    runner = ctx.actions.declare_file("%s_runner.sh" % ctx.label.name)
+
+    ctx.actions.expand_template(
+        template = ctx.file._runner_template,
+        output = runner,
+        is_executable = True,
+        substitutions = {
+            "__TMPL_CMD": shell.quote(jest.files_to_run.executable.short_path),
+            "__TMPL_ARGS": " ".join([shell.quote(x) for x in args])
+        },
     )
 
-    ctx.actions.write(ctx.outputs.manifest, "".join([
-        f.short_path + "\n"
-        for f in sources.to_list()
-        if f.path.endswith(".js") or f.path.endswith(".mjs")
-    ]))
+    runfiles = ctx.runfiles(
+        files = ctx.files._bash_runfile_helpers + [manifest],
+        transitive_files = all_inputs,
+    )
 
-    return [DefaultInfo(files = sources)]
+    runfiles = runfiles.merge(jest.default_runfiles)
 
-"""Rule to get devmode js sources from deps.
-Outputs a manifest file with the sources listed.
-"""
-_devmode_js_sources = rule(
-    implementation = _devmode_js_sources_impl,
+    return (
+        DefaultInfo(
+            executable = runner,
+            runfiles = runfiles,
+        )
+    )
+
+_jest_test = rule(
+    implementation = _jest_test_impl,
+    executable = True,
+    test = True,
     attrs = {
-        "libraries": attr.label_list(
-            providers = [JSNamedModuleInfo],
+        "srcs": attr.label_list(
+            allow_files = True,
+            aspects = [node_modules_aspect],
         ),
-    },
-    outputs = {
-        "manifest": "%{name}.MF",
-    },
+        "deps": attr.label_list(
+            allow_files = True,
+            aspects = [node_modules_aspect],
+        ),
+        "config": attr.label(
+            providers = [JestConfig],
+            aspects = [node_modules_aspect]
+        ),
+        "_bash_runfile_helpers": attr.label(
+            default = "@bazel_tools//tools/bash/runfiles",
+        ),
+        "_runner_template": attr.label(
+            allow_single_file = True,
+            default = "@brex_rules_js//internal/jest:runner.sh",
+        ),
+        "_jest": attr.label(
+            executable = True,
+            cfg = "target",
+            default = "@brex_rules_js//packages/jest-runner",
+        ),
+        "npm_workspace": attr.string(),
+    }
 )
 
-def jest_node_test(
-        name,
-        tests = [],
-        tags = [],
-        config = None,
-        expected_exit_code = 0,
-        npm_workspace = "npm",
-        _jest_entrypoint = "@brex_rules_js//internal/jest:jest_runner.js",
-        **kwargs):
-    _devmode_js_sources(
-        name = "%s_devmode_srcs" % name,
-        libraries = tests,
-        testonly = 1,
-        tags = tags,
-    )
-
-    all_data = []
-
-    all_data += tests
-    all_data += [
-        "@brex_rules_js//packages/resolver-bazel:index",
-        "@brex_rules_js//packages/jest-bazel-resolver:index",
-        "@%s//@jest/core" % npm_workspace,
-        "@%s//jest-junit-reporter" % npm_workspace,
-    ]
-
-    all_data += [":%s_devmode_srcs.MF" % name, ":%s_devmode_srcs" % name]
-    all_data += [Label("@build_bazel_rules_nodejs//third_party/github.com/bazelbuild/bazel/tools/bash/runfiles")]
-
-    if config:
-        all_data.append(config)
-
-    templated_args = [
-        ["--manifest", "$(rootpath :%s_devmode_srcs.MF)" % name],
-        ["--config", "$(rootpath %s)" % config] if config else [],
-        kwargs.pop("templated_args", [])
-    ]
-
-    # Flatten
-    templated_args = [x for sub in templated_args for x in sub]
-
-    nodejs_test(
+def jest_node_test(name, tags = [], **kwargs):
+    _jest_test(
         name = name,
-        data = all_data,
-        entry_point = _jest_entrypoint,
-        templated_args = templated_args,
-        testonly = 1,
-        expected_exit_code = expected_exit_code,
         tags = tags + ["jest_test"],
+        **kwargs,
     )

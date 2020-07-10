@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"path"
-	"sort"
 
 	"github.com/bazelbuild/bazel-gazelle/config"
 	"github.com/bazelbuild/bazel-gazelle/label"
@@ -40,50 +39,30 @@ const (
 )
 
 type Config struct {
-	WorkspaceName    string
+	WorkspaceName string
+
+	Package     string
+	PackageMode PackageMode
+	Compiler    Compiler
+
 	NpmWorkspaceName string
-	NpmPackage       string
-	JestConfig       string
-	EslintEnabled    bool
-	EslintConfig     string
-	TsConfig         string
-	BabelConfig      string
-	Package          string
-	PackageMode      PackageMode
-	Compiler         Compiler
-}
+	NpmPackage       label.Label
+	NpmPackageFile   string
+	AllowNpmGuessing bool
 
-var TestExtensions = []string{
-	".test.js",
-	".test.ts",
-	".test.jsx",
-	".test.tsx",
-	".spec.js",
-	".spec.ts",
-	".spec.tsx",
-	".spec.jsx",
-}
+	TsConfig    label.Label
+	BabelConfig label.Label
+	JestConfig  label.Label
 
-var TsExtensions = []string{
-	".ts",
-	".tsx",
-}
+	EslintEnabled bool
+	EslintConfig  label.Label
 
-var JsExtensions = []string{
-	".js",
-	".jsx",
-}
+	ApolloEnabled bool
+	ApolloSchema  label.Label
 
-var RelevantExtensions = []string{
-	".ts",
-	".tsx",
-	".js",
-	".jsx",
-}
+	WebpackAssets []string
 
-var IgnoredExtensions = []string{
-	".config.js",
-	".config.ts",
+	NpmPackageIndex map[string]*rule.Rule
 }
 
 func GetConfig(c *config.Config) *Config {
@@ -120,32 +99,19 @@ func (c *Config) NpmPath(p string) string {
 	return fmt.Sprintf("@%s//%s", c.NpmWorkspaceName, p)
 }
 
-func (c *Config) IsRelevantFile(path string) bool {
-	return HasAnySuffix(path, RelevantExtensions...)
+func (c *Config) IsCode(path string) bool {
+	return HasAnySuffix(path, CodeExtensions...)
 }
 
-func (c *Config) IsTestFile(path string) bool {
-	return HasAnySuffix(path, TestExtensions...)
-}
-
-func (c *Config) IsTypescript(path string) bool {
-	return HasAnySuffix(path, TsExtensions...)
-}
-
-func (c *Config) IsJavascript(path string) bool {
-	return HasAnySuffix(path, JsExtensions...)
-}
-
-func (c *Config) IsBuiltinImport(path string) bool {
-	i := sort.SearchStrings(BuiltinModules, path)
-
-	return i < len(BuiltinModules) && BuiltinModules[i] == path
+func (c *Config) IsAsset(path string) bool {
+	return HasAnySuffix(path, c.WebpackAssets...)
 }
 
 // Cloning is important so we can maintain a hierarchical
 // configuration.
 func (c *Config) Clone() *Config {
 	cc := *c
+	cc.WebpackAssets = append(make([]string, 0), cc.WebpackAssets...)
 	return &cc
 }
 
@@ -156,14 +122,15 @@ func (c *Config) Clone() *Config {
 func (s *JSLanguage) RegisterFlags(fs *flag.FlagSet, cmd string, c *config.Config) {
 	js := &Config{
 		NpmWorkspaceName: "npm",
-		TsConfig:         "//:tsconfig.json",
+		AllowNpmGuessing: false,
 		PackageMode:      PackageModeIndividual,
 		Compiler:         CompilerTsLibrary,
+		NpmPackageIndex:  map[string]*rule.Rule{},
 	}
 
-	fs.StringVar(&js.NpmWorkspaceName, "npm_workspace_name", "npm", "option to change the name of the external workspace where npm/yarn is installing its packages to")
-	fs.StringVar(&js.JestConfig, "jest_config", "//:jest.config.js", "label for the jest config to be used")
-	fs.StringVar(&js.WorkspaceName, "workspace", "", "name of the current workspace")
+	if cmd == "update-repos" {
+		fs.StringVar(&js.NpmPackageFile, "package-json", "", "filter imported packages using package.json")
+	}
 
 	SetConfig(c, js)
 }
@@ -172,11 +139,19 @@ func (s *JSLanguage) RegisterFlags(fs *flag.FlagSet, cmd string, c *config.Confi
 // This is called once with the root configuration when Gazelle starts.
 // CheckFlags may set default values in flags or make implied changes.
 func (s *JSLanguage) CheckFlags(fs *flag.FlagSet, c *config.Config) error {
+	cfg := GetConfig(c)
+
+	for _, r := range c.Repos {
+		if r.Kind() == "npm_package_index" {
+			cfg.NpmPackageIndex[r.AttrString("module_name")] = r
+		}
+	}
+
 	return nil
 }
 
 // KnownDirectives returns a list of directive keys that this Configurer can
-// interpret. Gazelle prints errors for directives that are not recoginized by
+// interpret. Gazelle prints errors for directives that are not recognized by
 // any Configurer.
 func (s *JSLanguage) KnownDirectives() []string {
 	return []string{
@@ -209,12 +184,12 @@ func (s *JSLanguage) Configure(c *config.Config, rel string, f *rule.File) {
 	cfg := GetConfig(c).Clone()
 	SetConfig(c, cfg)
 
-	if f == nil {
-		return
-	}
-
 	if cfg.Package != "" {
 		cfg.Package = fmt.Sprintf("%s/%s", cfg.Package, path.Base(rel))
+	}
+
+	if f == nil {
+		return
 	}
 
 	for _, d := range f.Directives {
@@ -253,7 +228,7 @@ func (s *JSLanguage) Configure(c *config.Config, rel string, f *rule.File) {
 	}
 }
 
-func resolveRelativeLabel(s string, f *rule.File) string {
+func resolveRelativeLabel(s string, f *rule.File) label.Label {
 	lbl, err := label.Parse(s)
 
 	if err != nil {
@@ -264,5 +239,5 @@ func resolveRelativeLabel(s string, f *rule.File) string {
 		lbl = label.New("", f.Pkg, lbl.Name)
 	}
 
-	return lbl.String()
+	return lbl
 }

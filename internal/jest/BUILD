@@ -1,4 +1,4 @@
 exports_files(
-    ["jest_runner.js"],
+    ["runner.sh"],
     visibility = ["//visibility:public"],
 )

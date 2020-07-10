@@ -1,7 +1,6 @@
-load("@npm_bazel_typescript//:index.bzl", "ts_library")
+load("@brex_rules_js//:defs.bzl", "eslint_test")
+load("@npm//@bazel/typescript:index.bzl", "ts_library")
 load("@build_bazel_rules_nodejs//:index.bzl", "nodejs_binary")
-
-# gazelle:lang js
 
 nodejs_binary(
     name = "webpack-frontend",
@@ -20,7 +19,8 @@ nodejs_binary(
 ts_library(
     name = "config",
     srcs = ["config.ts"],
-    tsconfig = "@brex_rules_js//:tsconfig.json",
+    module_name = "@brex_rules_js/webpack-frontend",
+    tsconfig = "//:tsconfig.json",
     visibility = ["//visibility:public"],
     deps = [
         "@npm//@types",
@@ -29,9 +29,25 @@ ts_library(
 )
 
 ts_library(
+    name = "devserver",
+    srcs = ["devserver.ts"],
+    module_name = "@brex_rules_js/webpack-frontend",
+    tsconfig = "//:tsconfig.json",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":compiler",
+        ":config",
+        "@npm//@types",
+        "@npm//webpack",
+        "@npm//webpack-dev-server",
+    ],
+)
+
+ts_library(
     name = "main",
     srcs = ["main.ts"],
-    tsconfig = "@brex_rules_js//:tsconfig.json",
+    module_name = "@brex_rules_js/webpack-frontend",
+    tsconfig = "//:tsconfig.json",
     visibility = ["//visibility:public"],
     deps = [
         ":compiler",
@@ -45,40 +61,38 @@ ts_library(
 ts_library(
     name = "compiler",
     srcs = ["compiler.ts"],
-    tsconfig = "@brex_rules_js//:tsconfig.json",
+    module_name = "@brex_rules_js/webpack-frontend",
+    tsconfig = "//:tsconfig.json",
     visibility = ["//visibility:public"],
     deps = [
         ":config",
-        ":module-loader",
+        "//packages/compiler-infra:module-loader",
         "@npm//@types",
         "@npm//enhanced-resolve",
         "@npm//webpack",
     ],
 )
 
-ts_library(
-    name = "devserver",
-    srcs = ["devserver.ts"],
-    tsconfig = "@brex_rules_js//:tsconfig.json",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":compiler",
-        ":config",
-        "@npm//@types",
-        "@npm//express",
-        "@npm//webpack",
-        "@npm//webpack-dev-middleware",
-    ],
+eslint_test(
+    name = "compiler.lint",
+    srcs = [":compiler"],
+    config = "//:eslint-config",
 )
 
-ts_library(
-    name = "module-loader",
-    srcs = ["module-loader.ts"],
-    tsconfig = "@brex_rules_js//:tsconfig.json",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":config",
-        "@npm//@types",
-        "@npm//resolve",
-    ],
+eslint_test(
+    name = "config.lint",
+    srcs = [":config"],
+    config = "//:eslint-config",
+)
+
+eslint_test(
+    name = "devserver.lint",
+    srcs = [":devserver"],
+    config = "//:eslint-config",
+)
+
+eslint_test(
+    name = "main.lint",
+    srcs = [":main"],
+    config = "//:eslint-config",
 )

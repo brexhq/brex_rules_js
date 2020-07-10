@@ -1,10 +1,13 @@
-load("@bazel_gazelle//:def.bzl", "gazelle", "gazelle_binary")
+load("@brex_rules_js//:defs.bzl", "eslint_config", "runfile_gazelle")
+load("@bazel_gazelle//:def.bzl", "gazelle_binary")
 
-# gazelle:lang go,proto
 # gazelle:workspace brex_rules_js
 # gazelle:prefix github.com/brexhq/brex_rules_js
-# gazelle:ts_config @brex_rules_js//:tsconfig.json
+# gazelle:ts_config :tsconfig.json
+# gazelle:eslint_enabled yes
+# gazelle:eslint_config :eslint-config
 # gazelle:exclude node_modules
+# gazelle:map_kind go_repository maybe_go_repository @brex_rules_js//internal:repos.bzl
 
 gazelle_binary(
     name = "gazelle-full",
@@ -15,7 +18,7 @@ gazelle_binary(
     ],
 )
 
-gazelle(
+runfile_gazelle(
     name = "gazelle",
     gazelle = ":gazelle-full",
 )
@@ -31,6 +34,19 @@ exports_files(
         "package.json",
         "yarn.lock",
         "tsconfig.json",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+eslint_config(
+    name = "eslint-config",
+    config = "eslint.config.js",
+    package_json = "package.json",
+    deps = [
+        "@npm//eslint-config-airbnb-base",
+        "@npm//eslint-config-prettier",
+        "@npm//eslint-plugin-prettier",
+        ".prettierrc",
     ],
     visibility = ["//visibility:public"],
 )

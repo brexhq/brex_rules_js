@@ -1,15 +1,18 @@
-load("@npm_bazel_typescript//:index.bzl", "ts_library")
+load("@brex_rules_js//:defs.bzl", "eslint_test")
+load("@npm//@bazel/typescript:index.bzl", "ts_library")
 
 ts_library(
     name = "compiler",
     srcs = ["compiler.ts"],
-    tsconfig = "@brex_rules_js//:tsconfig.json",
+    module_name = "@brex_rules_js/babel-tsc/js",
+    tsconfig = "//:tsconfig.json",
     visibility = ["//visibility:public"],
     deps = [
         ":config",
         "//packages/babel-tsc:config",
         "//packages/babel-tsc:host",
         "//packages/babel-tsc:utils",
+        "//packages/compiler-infra:module-loader",
         "@npm//@babel/core",
         "@npm//@types",
     ],
@@ -18,10 +21,12 @@ ts_library(
 ts_library(
     name = "config",
     srcs = ["config.ts"],
-    tsconfig = "@brex_rules_js//:tsconfig.json",
+    module_name = "@brex_rules_js/babel-tsc/js",
+    tsconfig = "//:tsconfig.json",
     visibility = ["//visibility:public"],
     deps = [
         "//packages/babel-tsc:config",
+        "//packages/compiler-infra:module-loader",
         "@npm//@babel/core",
         "@npm//@babel/plugin-proposal-class-properties",
         "@npm//@babel/plugin-proposal-decorators",
@@ -39,11 +44,30 @@ ts_library(
 ts_library(
     name = "index",
     srcs = ["index.ts"],
-    tsconfig = "@brex_rules_js//:tsconfig.json",
+    module_name = "@brex_rules_js/babel-tsc/js",
+    tsconfig = "//:tsconfig.json",
     visibility = ["//visibility:public"],
     deps = [
         ":compiler",
         ":config",
         "@npm//@types",
     ],
+)
+
+eslint_test(
+    name = "compiler.lint",
+    srcs = [":compiler"],
+    config = "//:eslint-config",
+)
+
+eslint_test(
+    name = "config.lint",
+    srcs = [":config"],
+    config = "//:eslint-config",
+)
+
+eslint_test(
+    name = "index.lint",
+    srcs = [":index"],
+    config = "//:eslint-config",
 )

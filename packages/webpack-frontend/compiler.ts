@@ -1,7 +1,7 @@
 import webpack from 'webpack';
 import AliasPlugin from "enhanced-resolve/lib/AliasPlugin";
 import { Config } from './config';
-import { getNativeLoader, buildScopedModuleLoader, ModuleLoader, buildScopedResolver } from './module-loader';
+import { getNativeLoader, buildScopedModuleLoader, ModuleLoader, buildScopedResolver } from '@brex_rules_js/compiler-infra/module-loader';
 
 type CustomConfiguration = {
   polyfills?: string[],

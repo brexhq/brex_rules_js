@@ -1,0 +1,116 @@
+load("@brex_rules_js//:defs.bzl", "babel_library", "eslint_test")
+load("@build_bazel_rules_nodejs//:index.bzl", "nodejs_binary")
+
+# gazelle:js_compiler babel
+
+nodejs_binary(
+    name = "eslint-runner",
+    entry_point = ":main.ts",
+    data = [":main"],
+    visibility = ["//visibility:public"],
+)
+
+babel_library(
+    name = "main",
+    srcs = ["main.ts"],
+    module_name = "@brex_rules_js/eslint-runner",
+    ts_config = "//:tsconfig.json",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":config",
+        ":eslint",
+        "//packages/compiler-infra:cache",
+        "//packages/compiler-infra:module-loader",
+        "//packages/compiler-infra:worker",
+        "@npm//@types",
+    ],
+)
+
+babel_library(
+    name = "resolver",
+    srcs = ["resolver.ts"],
+    module_name = "@brex_rules_js/eslint-runner",
+    ts_config = "//:tsconfig.json",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//packages/compiler-infra:module-loader",
+        "@npm//@types",
+        "@npm//resolve",
+    ],
+)
+
+babel_library(
+    name = "config",
+    srcs = ["config.ts"],
+    module_name = "@brex_rules_js/eslint-runner",
+    ts_config = "//:tsconfig.json",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//packages/compiler-infra:arg-parser",
+        "//packages/compiler-infra:path-resolver",
+        "@npm//@types",
+    ],
+)
+
+babel_library(
+    name = "eslint",
+    srcs = ["eslint.ts"],
+    module_name = "@brex_rules_js/eslint-runner",
+    ts_config = "//:tsconfig.json",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":config",
+        ":config-loader",
+        ":resolver",
+        "//packages/compiler-infra:module-loader",
+        "@npm//@types",
+        "@npm//@typescript-eslint/eslint-plugin",
+        "@npm//@typescript-eslint/parser",
+        "@npm//diff",
+        "@npm//eslint",
+        "@npm//eslint-plugin-import",
+    ],
+)
+
+babel_library(
+    name = "config-loader",
+    srcs = ["config-loader.ts"],
+    module_name = "@brex_rules_js/eslint-runner",
+    ts_config = "//:tsconfig.json",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//packages/compiler-infra:module-loader",
+        "@npm//@types",
+        "@npm//eslint",
+    ],
+)
+
+eslint_test(
+    name = "config-loader.lint",
+    srcs = [":config-loader"],
+    config = "//:eslint-config",
+)
+
+eslint_test(
+    name = "config.lint",
+    srcs = [":config"],
+    config = "//:eslint-config",
+)
+
+eslint_test(
+    name = "eslint.lint",
+    srcs = [":eslint"],
+    config = "//:eslint-config",
+)
+
+eslint_test(
+    name = "main.lint",
+    srcs = [":main"],
+    config = "//:eslint-config",
+)
+
+eslint_test(
+    name = "resolver.lint",
+    srcs = [":resolver"],
+    config = "//:eslint-config",
+)

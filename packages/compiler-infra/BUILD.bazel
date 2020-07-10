@@ -1,0 +1,91 @@
+load("@brex_rules_js//:defs.bzl", "eslint_test")
+load("@npm//@bazel/typescript:index.bzl", "ts_library")
+
+ts_library(
+    name = "cache",
+    srcs = ["cache.ts"],
+    module_name = "@brex_rules_js/compiler-infra",
+    tsconfig = "//:tsconfig.json",
+    visibility = ["//visibility:public"],
+    deps = ["@npm//@types"],
+)
+
+ts_library(
+    name = "module-loader",
+    srcs = ["module-loader.ts"],
+    module_name = "@brex_rules_js/compiler-infra",
+    tsconfig = "//:tsconfig.json",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cache",
+        "@npm//@types",
+        "@npm//resolve",
+    ],
+)
+
+ts_library(
+    name = "arg-parser",
+    srcs = ["arg-parser.ts"],
+    module_name = "@brex_rules_js/compiler-infra",
+    tsconfig = "//:tsconfig.json",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@npm//@types",
+        "@npm//yargs",
+    ],
+)
+
+ts_library(
+    name = "worker",
+    srcs = ["worker.ts"],
+    module_name = "@brex_rules_js/compiler-infra",
+    tsconfig = "//:tsconfig.json",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cache",
+        "@npm//@bazel/worker",
+        "@npm//@types",
+    ],
+)
+
+ts_library(
+    name = "path-resolver",
+    srcs = ["path-resolver.ts"],
+    module_name = "@brex_rules_js/compiler-infra",
+    tsconfig = "//:tsconfig.json",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cache",
+        "@npm//@types",
+    ],
+)
+
+eslint_test(
+    name = "arg-parser.lint",
+    srcs = [":arg-parser"],
+    config = "//:eslint-config",
+)
+
+eslint_test(
+    name = "cache.lint",
+    srcs = [":cache"],
+    config = "//:eslint-config",
+)
+
+eslint_test(
+    name = "module-loader.lint",
+    srcs = [":module-loader"],
+    config = "//:eslint-config",
+)
+
+eslint_test(
+    name = "path-resolver.lint",
+    srcs = [":path-resolver"],
+    config = "//:eslint-config",
+)
+
+eslint_test(
+    name = "worker.lint",
+    srcs = [":worker"],
+    config = "//:eslint-config",
+)

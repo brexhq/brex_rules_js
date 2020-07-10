@@ -17,7 +17,7 @@ CONFIG_RULE_ATTRS = {
     "data": attr.label_list(),
 }
 
-def default_config_rule_impl(ctx, provider):
+def default_config_rule_impl(ctx, provider, **kwargs):
     js_sources = []
     config = ctx.file.config
 
@@ -39,13 +39,14 @@ def default_config_rule_impl(ctx, provider):
         provider(
             config = config,
             runtime_deps = ctx.attr.runtime_deps,
+            **kwargs,
         ),
     ]
 
 def config_rule(implementation, attrs = CONFIG_RULE_ATTRS, **kwargs):
     return rule(
         implementation = implementation,
-        attrs = CONFIG_RULE_ATTRS,
+        attrs = attrs,
         **kwargs,
     )
 

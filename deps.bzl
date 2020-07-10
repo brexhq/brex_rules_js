@@ -11,3 +11,8 @@ def add_js():
     node_urls = ["https://nodejs.org/dist/v{version}/{filename}"],
   )
 
+  yarn_install(
+      name = "npm",
+      package_json = "//:package.json",
+      yarn_lock = "//:yarn.lock",
+  )

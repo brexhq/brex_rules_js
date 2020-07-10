@@ -1,6 +1,8 @@
 package js
 
-import "strings"
+import (
+	"strings"
+)
 
 func HasAnySuffix(str string, suffixes ...string) bool {
 	for _, s := range suffixes {

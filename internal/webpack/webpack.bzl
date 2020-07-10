@@ -73,15 +73,13 @@ def build_options(ctx):
     module_roots = get_module_roots(ctx, node_modules_root)
 
     # Collect all deps
-    compiler_deps = collect_runtime(deps = compiler_deps)
-    runtime_deps = collect_runtime(deps = runtime_deps)
+    compiler_deps = collect_runtime(compiler_deps)
+    runtime_deps = collect_runtime(runtime_deps)
 
     # Calculate all inputs
     all_inputs = depset(direct = inputs, transitive = [
-        compiler_deps.sources,
-        compiler_deps.node_modules,
-        runtime_deps.sources,
-        runtime_deps.node_modules,
+        compiler_deps,
+        runtime_deps,
     ])
 
     return struct(
